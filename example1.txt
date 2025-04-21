@@ -1,0 +1,8 @@
+States: q0,q1,q2
+Alphabet: a,b
+Start: q0
+Accept: q2
+Transitions:
+q0,a->q0,q1
+q0,b->q0
+q1,b->q2
