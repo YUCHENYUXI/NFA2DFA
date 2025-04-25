@@ -146,7 +146,7 @@ def visualize_automaton(states, transitions, start_state, accept_states, title='
 
 if __name__ == '__main__':
     # Example usage
-    for fname in ['example1.txt', 'example2.txt']:
+    for fname in ['example3.txt']:
         nfa = NFA.parse_from_file(fname)
         dfa_states, dfa_alpha, dfa_trans, dfa_start, dfa_accept = nfa_to_dfa(nfa)
         # Visualize NFA
