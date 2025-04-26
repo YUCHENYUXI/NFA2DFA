@@ -1,15 +1,13 @@
+import streamlit as st
 from collections import defaultdict, deque
-import  graphviz
+import graphviz
+
+# ------------------------
+# Core classes and logic
+# ------------------------
 
 class NFA:
     def __init__(self, states, alphabet, transitions, start_state, accept_states):
-        """
-        states: set of state names (strings)
-        alphabet: set of input symbols (exclude epsilon)
-        transitions: dict of (state, symbol) -> set of next states; use '' for epsilon
-        start_state: string
-        accept_states: set of state names
-        """
         self.states = set(states)
         self.alphabet = set(alphabet)
         self.transitions = defaultdict(set)
@@ -19,46 +17,34 @@ class NFA:
         self.accept_states = set(accept_states)
 
     @staticmethod
-    def parse_from_file(path):
-        """
-        Expected file format:
-          States: q0,q1,q2
-          Alphabet: a,b
-          Start: q0
-          Accept: q2
-          Transitions:
-            q0,a->q0,q1
-            q0,b->q0
-            q1,b->q2
-            q2,->q0  # epsilon move
-        """
+    def parse_from_text(text):
         states, alphabet, transitions = set(), set(), {}
         start, accept = None, set()
-        with open(path) as f:
-            section = None
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith('#'): continue
-                if line.startswith('States:'):
-                    states = set(x.strip() for x in line.split(':',1)[1].split(','))
-                elif line.startswith('Alphabet:'):
-                    alphabet = set(x.strip() for x in line.split(':',1)[1].split(','))
-                elif line.startswith('Start:'):
-                    start = line.split(':',1)[1].strip()
-                elif line.startswith('Accept:'):
-                    accept = set(x.strip() for x in line.split(':',1)[1].split(','))
-                elif line.startswith('Transitions:'):
-                    section = 'trans'
-                elif section == 'trans':
-                    left, right = line.split('->')
-                    s, sym = (x.strip() for x in left.split(','))
-                    dests = [x.strip() for x in right.split(',') if x.strip()]
-                    transitions[(s, sym)] = set(dests)
+        lines = text.strip().splitlines()
+        section = None
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            if line.startswith('States:'):
+                states = set(x.strip() for x in line.split(':', 1)[1].split(','))
+            elif line.startswith('Alphabet:'):
+                alphabet = set(x.strip() for x in line.split(':', 1)[1].split(','))
+            elif line.startswith('Start:'):
+                start = line.split(':', 1)[1].strip()
+            elif line.startswith('Accept:'):
+                accept = set(x.strip() for x in line.split(':', 1)[1].split(','))
+            elif line.startswith('Transitions:'):
+                section = 'trans'
+            elif section == 'trans':
+                left, right = line.split('->')
+                s, sym = (x.strip() for x in left.split(','))
+                dests = [x.strip() for x in right.split(',') if x.strip()]
+                transitions[(s, sym)] = set(dests)
         return NFA(states, alphabet, transitions, start, accept)
 
 
 def epsilon_closure(nfa: NFA, state_set: set) -> set:
-    """Compute epsilon-closure for a set of NFA states"""
     stack, closure = list(state_set), set(state_set)
     while stack:
         s = stack.pop()
@@ -70,7 +56,6 @@ def epsilon_closure(nfa: NFA, state_set: set) -> set:
 
 
 def move(nfa: NFA, state_set: set, symbol: str) -> set:
-    """Given NFA states and an input symbol, return reachable states (excluding ε)"""
     result = set()
     for s in state_set:
         result |= nfa.transitions.get((s, symbol), set())
@@ -78,23 +63,31 @@ def move(nfa: NFA, state_set: set, symbol: str) -> set:
 
 
 def nfa_to_dfa(nfa: NFA):
-    """Subset construction converting NFA to DFA"""
     dfa_states, dfa_trans, dfa_accept = set(), {}, set()
     alpha = nfa.alphabet.copy()
     start = frozenset(epsilon_closure(nfa, {nfa.start_state}))
-    queue = deque([start]); dfa_states.add(start)
+    queue = deque([start])
+    dfa_states.add(start)
     if nfa.accept_states & set(start): dfa_accept.add(start)
+
+    logs = []
+
     while queue:
         curr = queue.popleft()
+        logs.append(f"Current DFA state: {sorted(curr)}")
         for sym in alpha:
             mv = move(nfa, curr, sym)
-            if not mv: continue
             nxt = frozenset(epsilon_closure(nfa, mv))
             dfa_trans[(curr, sym)] = nxt
+            logs.append(f"  On '{sym}': move -> {sorted(mv)}, ε-closure -> {sorted(nxt)}")
             if nxt not in dfa_states:
-                dfa_states.add(nxt); queue.append(nxt)
-                if nfa.accept_states & set(nxt): dfa_accept.add(nxt)
-    return dfa_states, alpha, dfa_trans, start, dfa_accept
+                dfa_states.add(nxt)
+                queue.append(nxt)
+                if nfa.accept_states & set(nxt):
+                    dfa_accept.add(nxt)
+    return dfa_states, alpha, dfa_trans, start, dfa_accept, logs
+
+
 
 
 def visualize_automaton(states, transitions, start_state, accept_states, title='Automaton', filename=None):
@@ -115,8 +108,8 @@ def visualize_automaton(states, transitions, start_state, accept_states, title='
     font="Times New Roman Bold"
     dot = graphviz.Digraph(    
         comment=title,
-        format='png',
-        graph_attr={'dpi': '600', 'rankdir': 'LR', 'nodesep': '0.5', 'ranksep': '0.75'},
+        format='svg',
+        graph_attr={'rankdir': 'LR', 'nodesep': '0.5', 'ranksep': '0.75'},
         node_attr={'fontname': font},
         edge_attr={'fontname': font}
     )
@@ -139,23 +132,96 @@ def visualize_automaton(states, transitions, start_state, accept_states, title='
                 dot.edge(src_lbl, cleanstr(d), label=sym or 'ε')
         else:
             dot.edge(src_lbl, cleanstr(dsts), label=sym or 'ε')
-
-    if filename:
-        dot.render(filename, format='png', cleanup=True)
     return dot
 
-if __name__ == '__main__':
-    # Example usage
-    for fname in ['example3.txt']:
-        nfa = NFA.parse_from_file(fname)
-        dfa_states, dfa_alpha, dfa_trans, dfa_start, dfa_accept = nfa_to_dfa(nfa)
-        # Visualize NFA
-        nfa_dot = visualize_automaton(nfa.states, nfa.transitions, nfa.start_state, nfa.accept_states,
-                                     title=f'NFA_{fname}', filename=f'nfa_{fname}')
-        # Visualize DFA
-        # Flatten frozensets for labeling
-        str_states = {frozenset(s): frozenset(s) for s in dfa_states}
-        dfa_dot = visualize_automaton(
-            dfa_states, dfa_trans, dfa_start, dfa_accept,
-            title=f'DFA_{fname}', filename=f'dfa_{fname}'
+# ------------------------
+# Streamlit Web UI
+# ------------------------
+
+st.set_page_config(page_title="NFA to DFA Converter", layout="wide")
+st.title("🧠 NFA to DFA 可视化工具")
+
+# Persistent state
+if "page" not in st.session_state:
+    st.session_state.page = 0
+if "dfa_result" not in st.session_state:
+    st.session_state.dfa_result = None
+
+# 页面 0：介绍页面
+if st.session_state.page == 0:
+    st.subheader("🚀 欢迎使用 NFA 转换 DFA 可视化工具")
+    st.markdown("""
+本工具支持：
+- 基于文本格式输入一个 NFA
+- 自动转换为等价的 DFA
+- 可视化查看状态转换图
+
+点击下方按钮开始！
+""")
+    if st.button("➡️ 开始输入 NFA"):
+        st.session_state.page = 1
+
+# 页面 1：输入 NFA
+if st.session_state.page >= 1:
+    st.header("✍️ 输入 NFA 描述文本")
+    default_example = """States: 0,1,2,3,4,5,6,7,8,9,10
+Alphabet: a,b
+Start: 0
+Accept: 10
+Transitions:
+0,->1,7
+1,->2,4
+2,a->3
+3,->6
+4,b->5
+5,->6
+6,->1,7
+7,a->8
+8,b->9
+9,b->10
+"""
+    text_input = st.text_area("输入 NFA 格式", value=default_example, height=300)
+
+    if st.button("✅ 转换为 DFA"):
+        try:
+            nfa = NFA.parse_from_text(text_input)
+            dfa_states, alpha, dfa_trans, dfa_start, dfa_accept, logs = nfa_to_dfa(nfa)
+            st.session_state.dfa_result = {
+                "nfa": nfa,
+                "dfa_states": dfa_states,
+                "dfa_trans": dfa_trans,
+                "dfa_start": dfa_start,
+                "dfa_accept": dfa_accept,
+                "logs": logs,
+            }
+            st.session_state.page = 2
+        except Exception as e:
+            st.error(f"解析失败：{e}")
+
+# 页面 2：展示结果
+if st.session_state.page == 2:
+    st.header("📊 NFA & DFA 可视化")
+
+    with st.expander("🔍 NFA 图像",expanded=1):
+        dot_nfa = visualize_automaton(
+            st.session_state.dfa_result["nfa"].states,
+            st.session_state.dfa_result["nfa"].transitions,
+            st.session_state.dfa_result["nfa"].start_state,
+            st.session_state.dfa_result["nfa"].accept_states,
+            title="NFA"
         )
+        st.graphviz_chart(dot_nfa)
+
+    with st.expander("🔁 DFA 图像",expanded=1):
+        dot_dfa = visualize_automaton(
+            st.session_state.dfa_result["dfa_states"],
+            st.session_state.dfa_result["dfa_trans"],
+            st.session_state.dfa_result["dfa_start"],
+            st.session_state.dfa_result["dfa_accept"],
+            title="DFA"
+        )
+        st.graphviz_chart(dot_dfa)
+
+
+    if st.button("🔙 返回编辑"):
+        st.session_state.page = 1
