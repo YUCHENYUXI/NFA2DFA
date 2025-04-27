@@ -18,6 +18,7 @@ class NFA:
 
     @staticmethod
     def parse_from_text(text):
+        """Parse NFA from text representation."""
         states, alphabet, transitions = set(), set(), {}
         start, accept = None, set()
         lines = text.strip().splitlines()
@@ -58,7 +59,7 @@ def epsilon_closure(nfa: NFA, state_set: set) -> set:
 def move(nfa: NFA, state_set: set, symbol: str) -> set:
     result = set()
     for s in state_set:
-        result |= nfa.transitions.get((s, symbol), set())
+        result |= nfa.transitions.get((s, symbol), set()) # Union Operator
     return result
 
 
@@ -68,7 +69,8 @@ def nfa_to_dfa(nfa: NFA):
     start = frozenset(epsilon_closure(nfa, {nfa.start_state}))
     queue = deque([start])
     dfa_states.add(start)
-    if nfa.accept_states & set(start): dfa_accept.add(start)
+    if nfa.accept_states & set(start): 
+        dfa_accept.add(start)
 
     logs = []
 
@@ -109,9 +111,14 @@ def visualize_automaton(states, transitions, start_state, accept_states, title='
     dot = graphviz.Digraph(    
         comment=title,
         format='svg',
-        graph_attr={'rankdir': 'LR', 'nodesep': '0.5', 'ranksep': '0.75'},
-        node_attr={'fontname': font},
-        edge_attr={'fontname': font}
+        graph_attr=
+        {'rankdir': 'LR', 
+         'nodesep': '0.5', 
+         'ranksep': '0.75'},
+        node_attr=
+        {'fontname': font},
+        edge_attr=
+        {'fontname': font}
     )
 
     # Add nodes
@@ -221,7 +228,10 @@ if st.session_state.page == 2:
             title="DFA"
         )
         st.graphviz_chart(dot_dfa)
-
+    if st.session_state.dfa_result["logs"]:
+        with st.expander("📝 转换过程日志",expanded=1):
+            for log in st.session_state.dfa_result["logs"]:
+                st.write(log)
 
     if st.button("🔙 返回编辑"):
         st.session_state.page = 1
